@@ -85,7 +85,7 @@ export function CaseList({
                 </p>
                 <div className="flex items-center gap-2 mt-3">
                   <Badge variant="secondary">
-                    {caseItem?.files.length} files
+                    {caseItem?.files?.length ?? 0} files
                   </Badge>
                   <span className="text-xs text-muted-foreground">
                     Created {formatDate(caseItem?.createdAt)}
