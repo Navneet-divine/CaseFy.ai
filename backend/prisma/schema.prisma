@@ -9,6 +9,11 @@ datasource db {
   url      = env("MONGODB_URL")
 }
 
+enum Status {
+  open
+  closed
+}
+
 // ================= USERS =================
 
 model User {
@@ -18,6 +23,32 @@ model User {
   password             String
   resetPasswordToken   String?
   resetPasswordExpires DateTime?
+  cases                Case[] // 👈 relation
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Case {
+  id          String @id @default(auto()) @map("_id") @db.ObjectId
+  title       String
+  description String
+  status      Status @default(open)
+  files       File[] // Array of file URLs or paths
+  userId      String @db.ObjectId // 👈 foreign key
+
+  user User @relation(fields: [userId], references: [id]) // 👈 relation field
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model File {
+  id     String @id @default(auto()) @map("_id") @db.ObjectId
+  url    String
+  caseId String @db.ObjectId // 👈 foreign key
+
+  case Case @relation(fields: [caseId], references: [id]) // 👈 relation field
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

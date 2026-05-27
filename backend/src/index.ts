@@ -8,6 +8,7 @@ import cookieParser from 'cookie-parser';
 const app = express();
 
 import userRoutes from './routes/user.routes.js';
+import caseRoutes from './routes/case.routes.js';
 
 const normalizeOrigin = (value: string) => value.replace(/\/+$/, '');
 
@@ -47,6 +48,7 @@ app.use(cookieParser());
 
 // Routes
 app.use('/api/users', userRoutes);
+app.use('/api/cases', caseRoutes);
 
 const PORT = process.env.PORT || 5000;
 

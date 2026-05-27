@@ -8,10 +8,125 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
 import { BarChart3, FileText, Briefcase } from "lucide-react";
+import axios from "axios";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
+interface CaseData {
+  title: string;
+  description: string;
+}
+
+const NEXT_PUBLIC_API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
 export default function DashboardPage() {
   const { cases, selectedCaseId, chatHistory } = useApp();
-  const selectedCase = cases.find((c) => c.id === selectedCaseId);
+  const selectedCase = cases.find((c) => c?.id === selectedCaseId);
+  const [allCases, setAllCases] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedCaseDetails, setSelectedCaseDetails] = useState<any>(null);
+  const [totalCases, setTotalCases] = useState(0);
+
+  async function createCase(caseData: CaseData) {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const res = await axios.post(
+        `${NEXT_PUBLIC_API_BASE_URL}/cases/create-case`,
+        {
+          ...caseData,
+          status: "open",
+        },
+        { withCredentials: true },
+      );
+
+      const createdCase = res.data.case ?? res.data.cases ?? res.data;
+      setAllCases((prev) => [createdCase, ...prev].filter(Boolean).slice(0, 3));
+    } catch (error: any) {
+      console.error("Error creating case:", error);
+      setError(
+        error?.response?.data?.error ||
+          "Failed to create case. Please try again.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function fetchCaseDetails(id: string) {
+    try {
+      setIsLoading(true);
+      const res = await axios.get(
+        `${NEXT_PUBLIC_API_BASE_URL}/cases/get-case/${id}`,
+        { withCredentials: true },
+      );
+      setSelectedCaseDetails(res.data);
+    } catch (err: any) {
+      console.error("Failed to fetch case details:", err);
+      toast.error(err?.response?.data?.error || "Failed to load case details");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function handleDeleteCase(id: string) {
+    try {
+      setIsLoading(true);
+      const res = await axios.delete(
+        `${NEXT_PUBLIC_API_BASE_URL}/cases/delete-case/${id}`,
+        { withCredentials: true },
+      );
+      // remove from local list
+      setAllCases((prev) => prev.filter((c: any) => c.id !== id));
+      // clear selected details if deleted
+      if (selectedCaseDetails?.id === id) setSelectedCaseDetails(null);
+      toast.success("Case deleted");
+    } catch (err: any) {
+      console.error("Failed to delete case:", err);
+      toast.error(err?.response?.data?.error || "Failed to delete case");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    async function fetchCases() {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const res = await axios.get(
+          `${NEXT_PUBLIC_API_BASE_URL}/cases/get-cases?limit=3`,
+          {
+            withCredentials: true,
+          },
+        );
+
+        setAllCases(res.data.cases);
+        setTotalCases(res.data.totalCases);
+      } catch (error: any) {
+        setError(
+          error?.response?.data?.error ||
+            "Failed to fetch cases. Please try again.",
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchCases();
+  }, []);
+
+  useEffect(() => {
+    if (error) {
+      toast.error(error);
+    }
+  }, [error]);
+
+  const displayedCase =
+    selectedCaseDetails ||
+    selectedCase ||
+    allCases.find((c: any) => c?.id === selectedCaseId);
 
   return (
     <div className="p-4 sm:p-8">
@@ -31,9 +146,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-muted-foreground text-sm mb-1">Total Cases</p>
-              <p className="text-3xl font-bold text-foreground">
-                {cases.length}
-              </p>
+              <p className="text-3xl font-bold text-foreground">{totalCases}</p>
             </div>
             <Briefcase className="w-10 h-10 text-primary/20 flex-shrink-0" />
           </div>
@@ -44,7 +157,7 @@ export default function DashboardPage() {
             <div>
               <p className="text-muted-foreground text-sm mb-1">Total Files</p>
               <p className="text-3xl font-bold text-foreground">
-                {cases.reduce((sum, c) => sum + c.files.length, 0)}
+                {cases.reduce((sum, c) => sum + (c?.files?.length ?? 0), 0)}
               </p>
             </div>
             <FileText className="w-10 h-10 text-primary/20 flex-shrink-0" />
@@ -74,10 +187,18 @@ export default function DashboardPage() {
             <h2 className="text-xl sm:text-2xl font-bold text-foreground mb-4">
               Cases
             </h2>
-            <CaseForm />
+            <CaseForm
+              onCreateCase={createCase}
+              isLoading={isLoading}
+              error={error}
+            />
           </div>
           <div className="mt-6">
-            <CaseList />
+            <CaseList
+              cases={allCases}
+              onSelect={(id: string) => fetchCaseDetails(id)}
+              onDelete={(id: string) => handleDeleteCase(id)}
+            />
           </div>
         </div>
 
@@ -87,25 +208,25 @@ export default function DashboardPage() {
             <h2 className="text-xl sm:text-2xl font-bold text-foreground mb-4">
               {selectedCase ? `Files - ${selectedCase.name}` : "Files"}
             </h2>
-            {selectedCase && (
+            {displayedCase && (
               <Card className="p-4 mb-4">
                 <div className="space-y-2">
                   <p className="text-sm text-muted-foreground">Case Number</p>
                   <p className="font-semibold text-foreground text-sm sm:text-base">
-                    {selectedCase.caseNumber}
+                    {displayedCase.caseNumber}
                   </p>
                   <p className="text-sm text-muted-foreground mt-3">
                     Description
                   </p>
                   <p className="text-foreground text-sm sm:text-base">
-                    {selectedCase.description}
+                    {displayedCase.description}
                   </p>
                   <div className="flex flex-wrap gap-2 mt-4">
                     <Badge variant="outline" className="text-xs sm:text-sm">
-                      {selectedCase.files.length} files
+                      {displayedCase.files?.length ?? 0} files
                     </Badge>
                     <Badge variant="outline" className="text-xs sm:text-sm">
-                      Created {formatDate(selectedCase.createdAt)}
+                      Created {formatDate(displayedCase.createdAt)}
                     </Badge>
                   </div>
                 </div>
