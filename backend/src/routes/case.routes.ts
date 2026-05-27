@@ -2,7 +2,7 @@ import express from "express";
 const app = express.Router();
 
 import { isAuthenticated } from "../middleware/auth.middleware.js";
-import { createCase, deleteCase, getCaseById, getCases, updateCase } from "../controllers/case.controller";
+import { createCase, deleteCase, getCaseById, getCases, updateCase } from "../controllers/case.controller.js";
 
 
 
