@@ -1,9 +1,13 @@
 import type { Metadata } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { AppProvider } from "@/context/AppContext";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthContextProvider } from "@/context/AuthContext";
 import { Toaster } from "@/components/ui/sonner";
+
+const _geist = Geist({ subsets: ["latin"] });
+const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 // Removed Google font imports to avoid build-time network fetch failures
 
