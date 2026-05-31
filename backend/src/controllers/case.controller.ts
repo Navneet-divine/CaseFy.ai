@@ -41,7 +41,6 @@ export const getCaseById = async (req: Request, res: Response) => {
 export const createCase = async (req: Request, res: Response) => {
     try {
         const token = req.cookies.token;
-        console.log("Received token:", token);
         const userId = verifyToken(token)?.userId;
         const { title, description, status } = req.body;
 

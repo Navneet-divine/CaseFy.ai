@@ -31,6 +31,7 @@ export function CaseForm({
   onSuccess,
 }: CaseFormProps) {
   const { addCase } = useApp();
+  const { createCase } = useApp();
   const loading = isLoading ?? false;
   const [isOpen, setIsOpen] = useState(false);
   const [formData, setFormData] = useState({
@@ -67,13 +68,13 @@ export function CaseForm({
         description: formData.description,
       });
     } else {
-      // fallback to local context when no onCreateCase provided
-      addCase({
-        name: formData.name,
-        caseNumber: formData.caseNumber || "",
-        description: formData.description,
-        createdAt: new Date().toISOString(),
-      });
+      // use context API to create case when available
+      try {
+        await createCase({ title: formData.name, description: formData.description });
+      } catch (err: any) {
+        toast.error(err?.response?.data?.error || 'Failed to create case');
+        return;
+      }
     }
     setIsOpen(false);
     onSuccess?.();

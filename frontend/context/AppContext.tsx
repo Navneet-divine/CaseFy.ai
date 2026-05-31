@@ -1,6 +1,8 @@
 'use client'
 
-import React, { createContext, useContext, useState, ReactNode } from 'react'
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react'
+import axios from 'axios'
+import { toast } from 'sonner'
 
 export interface CaseFile {
   id: string
@@ -53,7 +55,9 @@ interface AppContextType {
   
   // Case operations
   addCase: (caseData: Omit<Case, 'id' | 'files'>) => void
+  createCase: (caseData: { title: string; description: string }) => Promise<any>
   deleteCase: (caseId: string) => void
+  fetchCases: () => Promise<any>
   setSelectedCaseId: (caseId: string | null) => void
   
   // File operations
@@ -149,6 +153,75 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setIsLoading(false)
     }
   }
+
+  const NEXT_PUBLIC_API_BASE_URL =
+    process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000/api'
+
+  function normalizeCase(raw: any) {
+    if (!raw) return null
+    return {
+      id: raw.id || raw._id || raw._id?.toString?.() || String(Math.random()),
+      name: raw.title || raw.name || 'Untitled Case',
+      caseNumber: raw.caseNumber || raw.case_number || '',
+      description: raw.description || '',
+      createdAt: raw.createdAt || raw.created_at || new Date().toISOString(),
+      files: Array.isArray(raw.files)
+        ? raw.files.map((f: any) => ({
+            id: f.id || f._id || Math.random().toString(36).substr(2, 9),
+            name: f.name || f.url?.split('/')?.pop?.() || 'file',
+            size: f.size || 0,
+            uploadedAt: f.createdAt || new Date().toISOString(),
+            type: 'pdf',
+            content: f.url || '',
+          }))
+        : [],
+    }
+  }
+
+  async function fetchCases() {
+    try {
+      const res = await axios.get(`${NEXT_PUBLIC_API_BASE_URL}/cases/get-cases`, {
+        withCredentials: true,
+      })
+      const fetched = res.data.cases ?? res.data
+      if (Array.isArray(fetched)) {
+        const normalized = fetched.map((c: any) => normalizeCase(c)).filter(Boolean)
+        setCases(normalized)
+        return normalized
+      }
+      return null
+    } catch (err) {
+      console.error('Failed to fetch cases', err)
+      return null
+    }
+  }
+
+  async function createCase(caseData: { title: string; description: string }) {
+    try {
+      const res = await axios.post(
+        `${NEXT_PUBLIC_API_BASE_URL}/cases/create-case`,
+        { ...caseData, status: 'open' },
+        { withCredentials: true },
+      )
+      const createdRaw = res.data.case ?? res.data.cases ?? res.data
+      const created = normalizeCase(createdRaw)
+      if (created) {
+        setCases((prev) => [created, ...prev])
+        toast.success('Case created')
+      }
+      return created
+    } catch (err: any) {
+      console.error('Failed to create case', err)
+      toast.error(err?.response?.data?.error || 'Failed to create case')
+      throw err
+    }
+  }
+
+  useEffect(() => {
+    // fetch cases on mount
+    fetchCases()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const login = async (email: string, password: string) => {
     setIsLoading(true)
@@ -250,6 +323,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         login,
         logout,
         addCase,
+        createCase,
+        fetchCases,
         deleteCase,
         setSelectedCaseId,
         addFileToCase,

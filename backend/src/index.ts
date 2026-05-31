@@ -9,6 +9,7 @@ const app = express();
 
 import userRoutes from './routes/user.routes.js';
 import caseRoutes from './routes/case.routes.js';
+import fileRoutes from './routes/file.routes.js';
 
 const normalizeOrigin = (value: string) => value.replace(/\/+$/, '');
 
@@ -49,14 +50,15 @@ app.use(cookieParser());
 // Routes
 app.use('/api/users', userRoutes);
 app.use('/api/cases', caseRoutes);
+app.use('/api/files', fileRoutes);
 
 const PORT = process.env.PORT || 5000;
 
 app.get('/', (req, res) => {
-    res.send('Hello World!');
+  res.send('Hello World!');
 });
 
 app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 });
 

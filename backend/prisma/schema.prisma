@@ -45,6 +45,8 @@ model Case {
 
 model File {
   id     String @id @default(auto()) @map("_id") @db.ObjectId
+  fileName String
+  fileVersion String
   url    String
   caseId String @db.ObjectId // 👈 foreign key
 

@@ -44,6 +44,7 @@ export default function DashboardPage() {
 
       const createdCase = res.data.case ?? res.data.cases ?? res.data;
       setAllCases((prev) => [createdCase, ...prev].filter(Boolean).slice(0, 3));
+      toast.success('Case created');
     } catch (error: any) {
       console.error("Error creating case:", error);
       setError(
