@@ -18,7 +18,7 @@ interface CaseData {
 }
 
 const NEXT_PUBLIC_API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5001/api";
 export default function DashboardPage() {
   const { cases, selectedCaseId, chatHistory } = useApp();
   const selectedCase = cases.find((c) => c?.id === selectedCaseId);
