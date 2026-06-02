@@ -1,6 +1,6 @@
-import prisma from "../lib/prisma";
+import prisma from "../lib/prisma.js";
 import { Request, Response } from "express";
-import { verifyToken } from "../utils/jwt";
+import { verifyToken } from "../utils/jwt.js";
 
 
 export const getCases = async (req: Request, res: Response) => {

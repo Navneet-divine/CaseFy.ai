@@ -1,4 +1,4 @@
-import cloudinary from "../lib/claudinary";
+import cloudinary from "../lib/claudinary.js";
 import { UploadApiResponse, UploadApiErrorResponse } from "cloudinary";
 
 export const uploadToCloudinary = (

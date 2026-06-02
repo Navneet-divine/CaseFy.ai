@@ -1,6 +1,6 @@
-import prisma from "../lib/prisma";
+import prisma from "../lib/prisma.js";
 import { Request, Response } from "express";
-import { uploadToCloudinary } from "../utils/claudinary";
+import { uploadToCloudinary } from "../utils/claudinary.js";
 
 export const uploadFile = async (req: Request, res: Response) => {
   try {
