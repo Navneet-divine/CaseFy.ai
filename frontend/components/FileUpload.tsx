@@ -14,6 +14,9 @@ import {
 } from "@/components/ui/select";
 import { Upload as UploadIcon, FileUp, Plus } from "lucide-react";
 import { Input } from "./ui/input";
+import { toast } from "sonner";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001/api";
 
 export function FileUpload() {
   const { cases, addFileToCase } = useApp();
@@ -22,6 +25,7 @@ export function FileUpload() {
   const [fileName, setFileName] = useState<string>("");
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [files, setFiles] = useState<File[]>([]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -32,36 +36,20 @@ export function FileUpload() {
     setIsDragging(false);
   };
 
-  const handleFiles = (files: FileList) => {
-    if (!selectedCase) {
-      alert("Please select a case first");
-      return;
+  const handleFiles = (fileList: FileList) => {
+    const incoming = Array.from(fileList);
+    const validFiles = incoming.filter((f) =>
+      f.name.toLowerCase().endsWith(".pdf"),
+    );
+    const invalidCount = incoming.length - validFiles.length;
+
+    if (invalidCount > 0) {
+      toast.error("Some selected files were not PDFs and were ignored.");
     }
 
-    Array.from(files).forEach((file) => {
-      // Only accept PDF files
-      if (!file.name.toLowerCase().endsWith(".pdf")) {
-        alert(`${file.name} is not a PDF file. Only PDF files are supported.`);
-        return;
-      }
+    if (validFiles.length === 0) return;
 
-      const newFile = {
-        id: Math.random().toString(36).substr(2, 9),
-        name: fileName ? fileName : file.name,
-        size: file.size,
-        uploadedAt: new Date().toISOString().split("T")[0],
-        type: "pdf",
-        content: `PDF document: ${file.name}`,
-      };
-
-      addFileToCase(selectedCase, newFile);
-    });
-
-    // Reset file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-    setFileName("");
+    setFiles((prev) => [...prev, ...validFiles]);
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -76,8 +64,81 @@ export function FileUpload() {
     }
   };
 
-  // Do not auto-select the first case so the placeholder remains visible
+  const handleFileUpload = async () => {
+  if (!selectedCase) {
+    toast.error("Please select a case first");
+    return;
+  }
 
+  if (!fileName.trim() || fileName.trim().length < 3) {
+    toast.error(
+      "Please enter a valid file name (at least 3 characters long)"
+    );
+    return;
+  }
+
+  const uploadFiles = files.length
+    ? files
+    : Array.from(fileInputRef.current?.files || []);
+
+  if (uploadFiles.length === 0) {
+    toast.error("Please select at least one file to upload");
+    fileInputRef.current?.click();
+    return;
+  }
+
+  // Validate all files first
+  for (const file of uploadFiles) {
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      toast.error(
+        `${file.name} is not a PDF file. Only PDF files are supported.`
+      );
+      return;
+    }
+  }
+
+  const formData = new FormData();
+
+  uploadFiles.forEach((file) => {
+    formData.append("file", file);
+  });
+
+  formData.append("fileName", fileName);
+  formData.append("caseId", selectedCase);
+
+  try {
+    const res = await fetch(`${API_URL}/files/upload-file`, {
+      method: "POST",
+      body: formData,
+      credentials: "include",
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || "File upload failed");
+    }
+
+    toast.success(
+      data.message ||
+        `${uploadFiles.length} file(s) uploaded successfully`
+    );
+
+    // Reset form
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+
+    setFiles([]);
+    setFileName("");
+  } catch (err) {
+    toast.error(
+      err instanceof Error
+        ? err.message
+        : "Failed to upload file. Please try again."
+    );
+  }
+};
   return (
     <Card className="p-4 sm:p-6">
       <h3 className="font-semibold text-base sm:text-lg mb-4">
@@ -142,34 +203,43 @@ export function FileUpload() {
           />
 
           <FileUp className="w-10 sm:w-12 h-10 sm:h-12 mx-auto mb-4 text-muted-foreground" />
-          <p className="text-foreground font-medium text-sm sm:text-base mb-1">
-            Drag and drop your PDF files here
-          </p>
-          <p className="text-xs sm:text-sm text-muted-foreground mb-4">
-            or click to browse your computer
-          </p>
-          <Button variant="outline" size="sm" className="text-xs sm:text-sm">
-            <UploadIcon className="w-4 h-4 mr-2" />
-            Select Files
-          </Button>
+          {files.length > 0 ? (
+            <div>
+              {files.map((f, index) => (
+                <p key={index} className="text-sm sm:text-base">
+                  {f.name}
+                </p>
+              ))}
+            </div>
+          ) : (
+            <>
+              <p className="text-foreground font-medium text-sm sm:text-base mb-1">
+                Drag and drop your PDF files here
+              </p>
+              <p className="text-xs sm:text-sm text-muted-foreground mb-4">
+                or click to browse your computer
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs sm:text-sm"
+                onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                  e.stopPropagation();
+                  fileInputRef.current?.click();
+                }}
+              >
+                <UploadIcon className="w-4 h-4 mr-2" />
+                Select Files
+              </Button>
+            </>
+          )}
         </div>
 
         <div className="mt-2 text-center">
-          <Button
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full gap-2"
-          >
+          <Button onClick={handleFileUpload} className="w-full gap-2">
             <Plus className="w-4 h-4" />
             Add File
           </Button>
-          {/* <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-            className="text-xs sm:text-sm w-full"
-          >
-            Add file
-          </Button> */}
         </div>
 
         <div className="bg-muted/30 p-3 rounded-lg text-xs sm:text-sm">

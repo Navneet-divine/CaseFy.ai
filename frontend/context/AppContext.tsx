@@ -154,8 +154,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const NEXT_PUBLIC_API_BASE_URL =
-    process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000/api'
+  const API_BASE_URL =
+    process.env.NEXT_PUBLIC_API_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    'http://localhost:5001/api'
 
   function normalizeCase(raw: any) {
     if (!raw) return null
@@ -180,12 +182,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   async function fetchCases() {
     try {
-      const res = await axios.get(`${NEXT_PUBLIC_API_BASE_URL}/cases/get-cases`, {
+      const res = await axios.get(`${API_BASE_URL}/cases/get-cases`, {
         withCredentials: true,
       })
       const fetched = res.data.cases ?? res.data
       if (Array.isArray(fetched)) {
-        const normalized = fetched.map((c: any) => normalizeCase(c)).filter(Boolean)
+        const normalized = fetched
+          .map((c: any) => normalizeCase(c))
+          .filter((c): c is Case => c !== null)
         setCases(normalized)
         return normalized
       }
@@ -199,7 +203,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   async function createCase(caseData: { title: string; description: string }) {
     try {
       const res = await axios.post(
-        `${NEXT_PUBLIC_API_BASE_URL}/cases/create-case`,
+        `${API_BASE_URL}/cases/create-case`,
         { ...caseData, status: 'open' },
         { withCredentials: true },
       )

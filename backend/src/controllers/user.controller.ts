@@ -30,7 +30,6 @@ export const register = async (req: Request, res: Response) => {
       password: await hashPassword(password),
     };
 
-    console.log('Checking for existing user with email:', email);
     const existingUser = await prisma.user.findUnique({
       where: { email },
     });
@@ -39,7 +38,6 @@ export const register = async (req: Request, res: Response) => {
       return res.status(409).json({ error: "User already exists" });
     }
 
-    console.log('Creating user with data:', { fullName, email });
     const newUser = await prisma.user.create({
       data: userData,
     });

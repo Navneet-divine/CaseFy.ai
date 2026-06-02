@@ -44,14 +44,15 @@ model Case {
 }
 
 model File {
-  id     String @id @default(auto()) @map("_id") @db.ObjectId
-  fileName String
-  fileVersion String
-  url    String
-  caseId String @db.ObjectId // 👈 foreign key
+  id                 String   @id @default(auto()) @map("_id") @db.ObjectId
+  fileName           String
+  fileVersion        String
+  url                String
+  cloudinaryPublicId String?
 
-  case Case @relation(fields: [caseId], references: [id]) // 👈 relation field
+  caseId             String @db.ObjectId
+  case               Case   @relation(fields: [caseId], references: [id])
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
