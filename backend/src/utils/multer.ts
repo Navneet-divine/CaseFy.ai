@@ -1,11 +1,12 @@
-import multer from "multer";
+import multer, { FileFilterCallback } from "multer";
+import type { Request } from "express";
 
 const storage = multer.memoryStorage();
 
 const fileFilter = (
-  req: any,
+  req: Request,
   file: Express.Multer.File,
-  cb: multer.FileFilterCallback,
+  cb: FileFilterCallback,
 ) => {
   if (file.mimetype === "application/pdf") {
     cb(null, true);
