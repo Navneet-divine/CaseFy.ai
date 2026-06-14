@@ -11,6 +11,7 @@ export interface CaseFile {
   uploadedAt: string
   type: string
   content?: string
+  fileVersion?: string
 }
 
 export interface Case {
@@ -41,31 +42,31 @@ interface AppContextType {
   user: User | null
   isAuthenticated: boolean
   isLoading: boolean
-  
+
   // Case data
   cases: Case[]
   selectedCaseId: string | null
   selectedFileIds: string[]
   chatHistory: Message[]
-  
+
   // Auth operations
   signup: (email: string, password: string, name: string) => Promise<void>
   login: (email: string, password: string) => Promise<void>
   logout: () => void
-  
+
   // Case operations
   addCase: (caseData: Omit<Case, 'id' | 'files'>) => void
   createCase: (caseData: { title: string; description: string }) => Promise<any>
   deleteCase: (caseId: string) => void
   fetchCases: () => Promise<any>
   setSelectedCaseId: (caseId: string | null) => void
-  
+
   // File operations
   addFileToCase: (caseId: string, file: CaseFile) => void
   deleteFileFromCase: (caseId: string, fileId: string) => void
   toggleFileSelection: (fileId: string) => void
   clearSelectedFiles: () => void
-  
+
   // Chat operations
   addMessage: (message: Message) => void
   clearChatHistory: () => void
@@ -132,7 +133,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 800))
-      
+
       // Mock validation
       if (!email || !password || !name) {
         throw new Error('All fields are required')
@@ -140,14 +141,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (password.length < 6) {
         throw new Error('Password must be at least 6 characters')
       }
-      
+
       const newUser: User = {
         id: Math.random().toString(36).substr(2, 9),
         email,
         name,
         createdAt: new Date().toISOString()
       }
-      
+
       setUser(newUser)
     } finally {
       setIsLoading(false)
@@ -169,13 +170,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       createdAt: raw.createdAt || raw.created_at || new Date().toISOString(),
       files: Array.isArray(raw.files)
         ? raw.files.map((f: any) => ({
-            id: f.id || f._id || Math.random().toString(36).substr(2, 9),
-            name: f.name || f.url?.split('/')?.pop?.() || 'file',
-            size: f.size || 0,
-            uploadedAt: f.createdAt || new Date().toISOString(),
-            type: 'pdf',
-            content: f.url || '',
-          }))
+          id: f.id || f._id || Math.random().toString(36).substr(2, 9),
+          name: f.fileName || f.name || f.url?.split('/')?.pop?.() || 'file',
+          size: f.size || 0,
+          uploadedAt: f.createdAt || new Date().toISOString(),
+          type: 'pdf',
+          content: f.url || '',
+          fileVersion: f.fileVersion || 'v1',
+        }))
         : [],
     }
   }
@@ -232,12 +234,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 800))
-      
+
       // Mock validation
       if (!email || !password) {
         throw new Error('Email and password are required')
       }
-      
+
       // Mock user for demo
       const mockUser: User = {
         id: Math.random().toString(36).substr(2, 9),
@@ -245,7 +247,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         name: email.split('@')[0],
         createdAt: new Date().toISOString()
       }
-      
+
       setUser(mockUser)
     } finally {
       setIsLoading(false)
@@ -277,24 +279,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   const addFileToCase = (caseId: string, file: CaseFile) => {
-    setCases(cases.map(c => 
-      c.id === caseId 
+    setCases(cases.map(c =>
+      c.id === caseId
         ? { ...c, files: [...c.files, file] }
         : c
     ))
   }
 
-  const deleteFileFromCase = (caseId: string, fileId: string) => {
-    setCases(cases.map(c => 
-      c.id === caseId 
-        ? { ...c, files: c.files.filter(f => f.id !== fileId) }
-        : c
-    ))
-    setSelectedFileIds(selectedFileIds.filter(id => id !== fileId))
+  const deleteFileFromCase = async (caseId: string, fileId: string) => {
+    try {
+      await axios.delete(`${API_BASE_URL}/files/delete-file/${fileId}`, {
+        withCredentials: true,
+      })
+      setCases(cases.map(c =>
+        c.id === caseId
+          ? { ...c, files: c.files.filter(f => f.id !== fileId) }
+          : c
+      ))
+      setSelectedFileIds(selectedFileIds.filter(id => id !== fileId))
+      toast.success('File deleted successfully')
+    } catch (err: any) {
+      console.error('Failed to delete file', err)
+      toast.error(err?.response?.data?.error || 'Failed to delete file')
+    }
   }
 
   const toggleFileSelection = (fileId: string) => {
-    setSelectedFileIds(prev => 
+    setSelectedFileIds(prev =>
       prev.includes(fileId)
         ? prev.filter(id => id !== fileId)
         : [...prev, fileId]
@@ -314,7 +325,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AppContext.Provider 
+    <AppContext.Provider
       value={{
         user,
         isAuthenticated: !!user,

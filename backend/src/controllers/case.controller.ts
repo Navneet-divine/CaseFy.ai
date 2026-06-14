@@ -12,7 +12,9 @@ export const getCases = async (req: Request, res: Response) => {
             orderBy: {
                 createdAt: "desc",
             },
-
+            include: {
+                files: true,
+            },
         });
 
         const totalCases = await prisma.case.count();
@@ -26,7 +28,12 @@ export const getCases = async (req: Request, res: Response) => {
 export const getCaseById = async (req: Request, res: Response) => {
     try {
         const { id } = req.params as { id: string };
-        const caseItem = await prisma.case.findUnique({ where: { id } });
+        const caseItem = await prisma.case.findUnique({
+            where: { id },
+            include: {
+                files: true,
+            },
+        });
 
         if (!caseItem) {
             return res.status(404).json({ error: "Case not found" });

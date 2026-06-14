@@ -65,80 +65,94 @@ export function FileUpload() {
   };
 
   const handleFileUpload = async () => {
-  if (!selectedCase) {
-    toast.error("Please select a case first");
-    return;
-  }
+    if (!selectedCase) {
+      toast.error("Please select a case first");
+      return;
+    }
 
-  if (!fileName.trim() || fileName.trim().length < 3) {
-    toast.error(
-      "Please enter a valid file name (at least 3 characters long)"
-    );
-    return;
-  }
-
-  const uploadFiles = files.length
-    ? files
-    : Array.from(fileInputRef.current?.files || []);
-
-  if (uploadFiles.length === 0) {
-    toast.error("Please select at least one file to upload");
-    fileInputRef.current?.click();
-    return;
-  }
-
-  // Validate all files first
-  for (const file of uploadFiles) {
-    if (!file.name.toLowerCase().endsWith(".pdf")) {
+    if (!fileName.trim() || fileName.trim().length < 3) {
       toast.error(
-        `${file.name} is not a PDF file. Only PDF files are supported.`
+        "Please enter a valid file name (at least 3 characters long)"
       );
       return;
     }
-  }
 
-  const formData = new FormData();
+    const uploadFiles = files.length
+      ? files
+      : Array.from(fileInputRef.current?.files || []);
 
-  uploadFiles.forEach((file) => {
-    formData.append("file", file);
-  });
+    if (uploadFiles.length === 0) {
+      toast.error("Please select at least one file to upload");
+      fileInputRef.current?.click();
+      return;
+    }
 
-  formData.append("fileName", fileName);
-  formData.append("caseId", selectedCase);
+    // Validate all files first
+    for (const file of uploadFiles) {
+      if (!file.name.toLowerCase().endsWith(".pdf")) {
+        toast.error(
+          `${file.name} is not a PDF file. Only PDF files are supported.`
+        );
+        return;
+      }
+    }
 
-  try {
-    const res = await fetch(`${API_URL}/files/upload-file`, {
-      method: "POST",
-      body: formData,
-      credentials: "include",
+    const formData = new FormData();
+
+    uploadFiles.forEach((file) => {
+      formData.append("file", file);
     });
 
-    const data = await res.json();
+    formData.append("fileName", fileName);
+    formData.append("caseId", selectedCase);
 
-    if (!res.ok) {
-      throw new Error(data.error || "File upload failed");
-    }
+    try {
+      const res = await fetch(`${API_URL}/files/upload-file`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
 
-    toast.success(
-      data.message ||
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "File upload failed");
+      }
+
+      if (data.files && Array.isArray(data.files)) {
+        data.files.forEach((f: any) => {
+          addFileToCase(selectedCase, {
+            id: f.id || f._id || Math.random().toString(36).substr(2, 9),
+            name: f.fileName || f.name || 'file',
+            size: f.size || 0,
+            uploadedAt: f.createdAt || new Date().toISOString(),
+            type: 'pdf',
+            content: f.url || '',
+            fileVersion: f.fileVersion || 'v1',
+          });
+        });
+      }
+
+      toast.success(
+        data.message ||
         `${uploadFiles.length} file(s) uploaded successfully`
-    );
+      );
 
-    // Reset form
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
+      // Reset form
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+
+      setFiles([]);
+      setFileName("");
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Failed to upload file. Please try again."
+      );
     }
-
-    setFiles([]);
-    setFileName("");
-  } catch (err) {
-    toast.error(
-      err instanceof Error
-        ? err.message
-        : "Failed to upload file. Please try again."
-    );
-  }
-};
+  };
   return (
     <Card className="p-4 sm:p-6">
       <h3 className="font-semibold text-base sm:text-lg mb-4">
@@ -187,11 +201,10 @@ export function FileUpload() {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
-          className={`border-2 border-dashed rounded-lg p-6 sm:p-8 text-center cursor-pointer transition-colors ${
-            isDragging
-              ? "border-primary bg-primary/5"
-              : "border-muted-foreground/30 hover:border-primary/50"
-          }`}
+          className={`border-2 border-dashed rounded-lg p-6 sm:p-8 text-center cursor-pointer transition-colors ${isDragging
+            ? "border-primary bg-primary/5"
+            : "border-muted-foreground/30 hover:border-primary/50"
+            }`}
         >
           <input
             ref={fileInputRef}
