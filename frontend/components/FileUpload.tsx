@@ -26,6 +26,12 @@ export function FileUpload() {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<File[]>([]);
+  const [extractedFiles, setExtractedFiles] = useState<
+    {
+      filename: string;
+      text: string;
+    }[]
+  >([]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -72,7 +78,7 @@ export function FileUpload() {
 
     if (!fileName.trim() || fileName.trim().length < 3) {
       toast.error(
-        "Please enter a valid file name (at least 3 characters long)"
+        "Please enter a valid file name (at least 3 characters long)",
       );
       return;
     }
@@ -91,7 +97,7 @@ export function FileUpload() {
     for (const file of uploadFiles) {
       if (!file.name.toLowerCase().endsWith(".pdf")) {
         toast.error(
-          `${file.name} is not a PDF file. Only PDF files are supported.`
+          `${file.name} is not a PDF file. Only PDF files are supported.`,
         );
         return;
       }
@@ -100,14 +106,15 @@ export function FileUpload() {
     const formData = new FormData();
 
     uploadFiles.forEach((file) => {
-      formData.append("file", file);
+      formData.append("files", file);
     });
 
     formData.append("fileName", fileName);
+    formData.append("filesText", JSON.stringify(extractedFiles));
     formData.append("caseId", selectedCase);
 
     try {
-      const res = await fetch(`${API_URL}/files/upload-file`, {
+      const res = await fetch(`${API_URL}/files/upload-file?upload`, {
         method: "POST",
         body: formData,
         credentials: "include",
@@ -123,19 +130,18 @@ export function FileUpload() {
         data.files.forEach((f: any) => {
           addFileToCase(selectedCase, {
             id: f.id || f._id || Math.random().toString(36).substr(2, 9),
-            name: f.fileName || f.name || 'file',
+            name: f.fileName || f.name || "file",
             size: f.size || 0,
             uploadedAt: f.createdAt || new Date().toISOString(),
-            type: 'pdf',
-            content: f.url || '',
-            fileVersion: f.fileVersion || 'v1',
+            type: "pdf",
+            content: f.url || "",
+            fileVersion: f.fileVersion || "v1",
           });
         });
       }
 
       toast.success(
-        data.message ||
-        `${uploadFiles.length} file(s) uploaded successfully`
+        data.message || `${uploadFiles.length} file(s) uploaded successfully`,
       );
 
       // Reset form
@@ -149,10 +155,48 @@ export function FileUpload() {
       toast.error(
         err instanceof Error
           ? err.message
-          : "Failed to upload file. Please try again."
+          : "Failed to upload file. Please try again.",
       );
     }
   };
+
+  async function handleExtractText() {
+    try {
+      if (files.length === 0) {
+        toast.error("No files to extract text from");
+        return;
+      }
+
+      const formData = new FormData();
+
+      files.forEach((file) => {
+        formData.append("files", file);
+      });
+
+      const res = await fetch(`${API_URL}/files/upload-file?action=extract`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Text extraction failed");
+      }
+
+      toast.success("Text extracted successfully. Check the output.");
+      setExtractedFiles(data.files);
+      console.log("Extracted files:", data.files);
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Failed to extract text. Please try again.",
+      );
+    }
+  }
+
   return (
     <Card className="p-4 sm:p-6">
       <h3 className="font-semibold text-base sm:text-lg mb-4">
@@ -201,10 +245,11 @@ export function FileUpload() {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
-          className={`border-2 border-dashed rounded-lg p-6 sm:p-8 text-center cursor-pointer transition-colors ${isDragging
-            ? "border-primary bg-primary/5"
-            : "border-muted-foreground/30 hover:border-primary/50"
-            }`}
+          className={`border-2 border-dashed rounded-lg p-6 sm:p-8 text-center cursor-pointer transition-colors ${
+            isDragging
+              ? "border-primary bg-primary/5"
+              : "border-muted-foreground/30 hover:border-primary/50"
+          }`}
         >
           <input
             ref={fileInputRef}
@@ -254,6 +299,32 @@ export function FileUpload() {
             Add File
           </Button>
         </div>
+
+        {files.length > 0 && (
+          <div className="mt-2 text-center">
+            <Button onClick={handleExtractText} className="w-full gap-2">
+              <Plus className="w-4 h-4" />
+              See Text
+            </Button>
+          </div>
+        )}
+
+        {extractedFiles.length > 0 && (
+          <div>
+            {extractedFiles.map((file) => (
+              <div key={file.filename}>
+                <h3>{file.filename}</h3>
+
+                <textarea
+                  value={file.text}
+                  readOnly
+                  rows={10}
+                  className="w-full border rounded p-2"
+                />
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="bg-muted/30 p-3 rounded-lg text-xs sm:text-sm">
           <div className="text-muted-foreground space-y-1">

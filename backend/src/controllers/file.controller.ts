@@ -2,16 +2,13 @@ import prisma from "../lib/prisma.js";
 import { Request, Response } from "express";
 import { uploadToCloudinary } from "../utils/claudinary.js";
 import cloudinary from "../lib/claudinary.js";
+import { PDFParse } from "pdf-parse";
 
 export const uploadFile = async (req: Request, res: Response) => {
   try {
-    const { fileName, caseId } = req.body;
-    console.log("Request body:", req.body);
+    const action = req.query.action as string;
 
-    // Uploaded file from multer
     const uploadedFiles = req.files as Express.Multer.File[];
-
-    console.log("Uploaded files:", uploadedFiles);
 
     if (!uploadedFiles || uploadedFiles.length === 0) {
       return res.status(400).json({
@@ -19,27 +16,54 @@ export const uploadFile = async (req: Request, res: Response) => {
       });
     }
 
-    // Count existing files
-    const existingFiles = await prisma.file.count({
-      where: {
-        caseId,
-      },
-    });
+    // Only extract text
+    if (action === "extract") {
+      const extractedFiles = [];
 
-    if (existingFiles + uploadedFiles.length > 10) {
-      return res.status(400).json({
-        error: `Only ${10 - existingFiles} file(s) can be uploaded`,
+      for (const uploadedFile of uploadedFiles) {
+        const parser = new PDFParse(
+          new Uint8Array(uploadedFile.buffer)
+        );
+
+        const pdfData = await parser.getText();
+
+        extractedFiles.push({
+          filename: uploadedFile.originalname,
+          text: pdfData.text,
+        });
+
+        await parser.destroy();
+      }
+
+      return res.status(200).json({
+        success: true,
+        files: extractedFiles,
       });
     }
 
-    // Generate version
+    // Upload + save
+    const { fileName, caseId } = req.body;
+
+    const existingFiles = await prisma.file.count({
+      where: { caseId },
+    });
+
     const createdFiles = [];
 
-    // Save in DB
     for (let i = 0; i < uploadedFiles.length; i++) {
       const uploadedFile = uploadedFiles[i];
 
-      const result = await uploadToCloudinary(uploadedFile.buffer);
+      const parser = new PDFParse(
+        new Uint8Array(uploadedFile.buffer)
+      );
+
+      const pdfData = await parser.getText();
+
+      await parser.destroy();
+
+      const result = await uploadToCloudinary(
+        uploadedFile.buffer
+      );
 
       const fileVersion = `v${existingFiles + i + 1}`;
 
@@ -51,21 +75,24 @@ export const uploadFile = async (req: Request, res: Response) => {
           url: result.secure_url,
           cloudinaryPublicId: result.public_id,
           size: uploadedFile.size,
+
+          // save extracted text
+          extractedText: pdfData.text,
         },
       });
 
       createdFiles.push(file);
     }
-    res.status(201).json({
+
+    return res.status(201).json({
       success: true,
-      message: "File(s) uploaded successfully",
       files: createdFiles,
     });
   } catch (error) {
-    console.log(error);
+    console.error(error);
 
-    res.status(500).json({
-      error: "Failed to upload file",
+    return res.status(500).json({
+      error: "Failed to process files",
     });
   }
 };
@@ -96,9 +123,52 @@ export const deleteFile = async (req: Request, res: Response) => {
       where: { id },
     });
 
-    res.status(200).json({ success: true, message: "File deleted successfully" });
+    res
+      .status(200)
+      .json({ success: true, message: "File deleted successfully" });
   } catch (error) {
     console.error("Error deleting file:", error);
     res.status(500).json({ error: "Failed to delete file" });
   }
 };
+
+// export const extractText = async (req: Request, res: Response) => {
+//   try {
+//     const files = req.files as Express.Multer.File[];
+
+//     if (!files || files.length === 0) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "No file uploaded",
+//       });
+//     }
+
+//     const extractedFiles = [];
+
+//     for (const file of files) {
+//       const uint8Array = new Uint8Array(file.buffer);
+
+//       const parser = new PDFParse(uint8Array);
+//       const pdfData = await parser.getText();
+
+//       extractedFiles.push({
+//         filename: file.originalname,
+//         text: pdfData.text,
+//       });
+
+//       await parser.destroy();
+//     }
+
+//     return res.status(200).json({
+//       success: true,
+//       files: extractedFiles,
+//     });
+//   } catch (error) {
+//     console.error("Error extracting text:", error);
+
+//     return res.status(500).json({
+//       success: false,
+//       message: "Failed to extract text",
+//     });
+//   }
+// };

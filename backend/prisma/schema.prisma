@@ -44,16 +44,17 @@ model Case {
 }
 
 model File {
-  id                 String   @id @default(auto()) @map("_id") @db.ObjectId
+  id                 String  @id @default(auto()) @map("_id") @db.ObjectId
   fileName           String
   fileVersion        String
+  extractedText      String
   url                String
   cloudinaryPublicId String?
-  size               Int      @default(0)
+  size               Int     @default(0)
 
-  caseId             String @db.ObjectId
-  case               Case   @relation(fields: [caseId], references: [id])
+  caseId String @db.ObjectId
+  case   Case   @relation(fields: [caseId], references: [id])
 
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
