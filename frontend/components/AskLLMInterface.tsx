@@ -36,6 +36,7 @@ export function AskLLMInterface() {
     chatHistory,
     addMessage,
     toggleFileSelection,
+    sendChatMessage,
   } = useApp();
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -60,41 +61,45 @@ export function AskLLMInterface() {
 
     if (!input.trim() || (!noCases && filesForQuery.length === 0)) return;
 
+    const currentInput = input;
     const userMessage = {
       id: Math.random().toString(36).substr(2, 9),
       role: "user" as const,
-      content: input,
+      content: currentInput,
       timestamp: new Date().toISOString(),
     };
     addMessage(userMessage);
     setInput("");
     setIsLoading(true);
 
-    setTimeout(() => {
-      const fileNames = filesForQuery
-        .map((f) => f.name.toLowerCase())
-        .join(" ");
-      let responseText = "";
-
-      if (fileNames.includes("complaint")) {
-        responseText = mockResponses.complaint;
-      } else if (fileNames.includes("discovery")) {
-        responseText = mockResponses.discovery;
-      } else if (fileNames.includes("indictment")) {
-        responseText = mockResponses.indictment;
-      } else {
-        responseText = mockResponses.default;
+    try {
+      if (!effectiveCase) {
+        throw new Error("No active case selected");
       }
-
+      const answer = await sendChatMessage(
+        effectiveCase.id,
+        selectedFileIds,
+        currentInput
+      );
       const assistantMessage = {
         id: Math.random().toString(36).substr(2, 9),
         role: "assistant" as const,
-        content: responseText,
+        content: answer,
         timestamp: new Date().toISOString(),
       };
       addMessage(assistantMessage);
+    } catch (err: any) {
+      console.error(err);
+      const assistantMessage = {
+        id: Math.random().toString(36).substr(2, 9),
+        role: "assistant" as const,
+        content: `Sorry, I encountered an error while processing your request: ${err.message || err}`,
+        timestamp: new Date().toISOString(),
+      };
+      addMessage(assistantMessage);
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   const handleExampleQuery = (query: string) => {

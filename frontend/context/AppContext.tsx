@@ -70,6 +70,7 @@ interface AppContextType {
   // Chat operations
   addMessage: (message: Message) => void
   clearChatHistory: () => void
+  sendChatMessage: (caseId: string, fileIds: string[], query: string) => Promise<string>
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined)
@@ -324,6 +325,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setChatHistory([])
   }
 
+  async function sendChatMessage(caseId: string, fileIds: string[], query: string): Promise<string> {
+    try {
+      const res = await axios.post(
+        `${API_BASE_URL}/cases/${caseId}/chat`,
+        { fileIds, query },
+        { withCredentials: true }
+      )
+      if (res.data.success) {
+        return res.data.answer
+      }
+      throw new Error(res.data.error || 'Failed to get chat response')
+    } catch (err: any) {
+      console.error('Failed to send chat message', err)
+      const errMsg = err?.response?.data?.error || err.message || 'Failed to send message'
+      throw new Error(errMsg)
+    }
+  }
+
   return (
     <AppContext.Provider
       value={{
@@ -347,7 +366,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         toggleFileSelection,
         clearSelectedFiles,
         addMessage,
-        clearChatHistory
+        clearChatHistory,
+        sendChatMessage
       }}
     >
       {children}

@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import { uploadToCloudinary } from "../utils/claudinary.js";
 import cloudinary from "../lib/claudinary.js";
 import { PDFParse } from "pdf-parse";
+import { chunkText, getEmbeddings } from "../utils/embeddings.js";
 
 export const uploadFile = async (req: Request, res: Response) => {
   try {
@@ -81,6 +82,25 @@ export const uploadFile = async (req: Request, res: Response) => {
         },
       });
 
+      // Split text into chunks, generate embeddings, and store them
+      const textToChunk = pdfData.text || "";
+      const chunksText = chunkText(textToChunk);
+
+      if (chunksText.length > 0) {
+        try {
+          const embeddings = await getEmbeddings(chunksText);
+          await prisma.fileChunk.createMany({
+            data: chunksText.map((text, index) => ({
+              text,
+              embedding: embeddings[index] || [],
+              fileId: file.id,
+            })),
+          });
+        } catch (embedError) {
+          console.error(`Failed to generate embeddings for file ${file.id}:`, embedError);
+        }
+      }
+
       createdFiles.push(file);
     }
 
@@ -118,6 +138,11 @@ export const deleteFile = async (req: Request, res: Response) => {
         console.error("Failed to delete from Cloudinary:", cloudinaryErr);
       }
     }
+
+    // Delete associated file chunks first
+    await prisma.fileChunk.deleteMany({
+      where: { fileId: id },
+    });
 
     await prisma.file.delete({
       where: { id },

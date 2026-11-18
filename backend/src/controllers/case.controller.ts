@@ -1,6 +1,8 @@
 import prisma from "../lib/prisma.js";
 import { Request, Response } from "express";
 import { verifyToken } from "../utils/jwt.js";
+import { GoogleGenAI } from "@google/genai";
+import { chunkText, getEmbedding, getEmbeddings, cosineSimilarity } from "../utils/embeddings.js";
 
 
 export const getCases = async (req: Request, res: Response) => {
@@ -134,3 +136,190 @@ export const deleteCase = async (req: Request, res: Response) => {
         res.status(500).json({ error: "Failed to delete case" });
     }
 }
+
+
+export const chatWithCase = async (req: Request, res: Response) => {
+    try {
+        const { id: caseId } = req.params as { id: string };
+        const { query, fileIds } = req.body;
+
+        if (!query?.trim()) {
+            return res.status(400).json({
+                error: "Query is required",
+            });
+        }
+
+        // -----------------------------
+        // Get files to search
+        // -----------------------------
+
+        let selectedFileIds: string[] = [];
+
+        if (Array.isArray(fileIds) && fileIds.length > 0) {
+            selectedFileIds = fileIds;
+        } else {
+            const files = await prisma.file.findMany({
+                where: {
+                    caseId,
+                },
+                select: {
+                    id: true,
+                },
+            });
+
+            selectedFileIds = files.map((file) => file.id);
+        }
+
+        if (selectedFileIds.length === 0) {
+            return res.status(404).json({
+                error: "No files found in this case.",
+            });
+        }
+
+        // -----------------------------
+        // Generate embedding
+        // -----------------------------
+
+        const queryEmbedding = await getEmbedding(query);
+
+        // -----------------------------
+        // Vector Search
+        // -----------------------------
+
+        const result: any = await prisma.$runCommandRaw({
+            aggregate: "filechunk", // <-- change if your collection name differs
+
+            pipeline: [
+                {
+                    $vectorSearch: {
+                        index: "file_chunk_vector_index",
+
+                        path: "embedding",
+
+                        queryVector: queryEmbedding,
+
+                        limit: 5,
+
+                        numCandidates: 100,
+
+                        filter: {
+                            fileId: {
+                                $in: selectedFileIds,
+                            },
+                        },
+                    },
+                },
+
+                {
+                    $lookup: {
+                        from: "file", // <-- change if needed
+
+                        localField: "fileId",
+
+                        foreignField: "_id",
+
+                        as: "file",
+                    },
+                },
+
+                {
+                    $unwind: "$file",
+                },
+
+                {
+                    $project: {
+                        _id: 0,
+
+                        text: 1,
+
+                        similarity: {
+                            $meta: "vectorSearchScore",
+                        },
+
+                        fileName: "$file.fileName",
+                    },
+                },
+            ],
+
+            cursor: {},
+        });
+
+        const chunks = result.cursor.firstBatch;
+
+        if (!chunks.length) {
+            return res.status(200).json({
+                success: true,
+                answer: "No relevant information was found.",
+                sources: [],
+            });
+        }
+
+        // -----------------------------
+        // Build context
+        // -----------------------------
+
+        const context = chunks
+            .map(
+                (chunk: any, index: number) =>
+                    `Excerpt ${index + 1}
+File: ${chunk.fileName}
+
+${chunk.text}`
+            )
+            .join("\n\n");
+
+        // -----------------------------
+        // Ask Gemini
+        // -----------------------------
+
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) {
+            return res.status(500).json({
+                error: "GEMINI_API_KEY is not defined in backend environment variables. Please check backend/.env file."
+            });
+        }
+
+        const ai = new GoogleGenAI({ apiKey });
+
+        const prompt = `
+You are an AI legal assistant.
+
+Answer ONLY using the provided context.
+
+If the answer is not present,
+say:
+
+"I couldn't find that information in the selected files."
+
+Context:
+
+${context}
+
+Question:
+
+${query}
+`;
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+        });
+
+        return res.json({
+            success: true,
+
+            answer: response.text || "No response generated.",
+
+            sources: chunks.map((chunk: any) => ({
+                fileName: chunk.fileName,
+                similarity: chunk.similarity,
+            })),
+        });
+    } catch (error) {
+        console.error(error);
+
+        return res.status(500).json({
+            error: "Something went wrong.",
+        });
+    }
+};

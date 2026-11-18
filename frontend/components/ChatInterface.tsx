@@ -19,7 +19,7 @@ const mockResponses: { [key: string]: string } = {
 }
 
 export function ChatInterface() {
-  const { cases, selectedCaseId, selectedFileIds, chatHistory, addMessage } = useApp()
+  const { cases, selectedCaseId, selectedFileIds, chatHistory, addMessage, sendChatMessage } = useApp()
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [selectAllFiles, setSelectAllFiles] = useState(false)
@@ -48,42 +48,43 @@ export function ChatInterface() {
       return
     }
 
+    const currentInput = input
     // Add user message
     const userMessage = {
       id: Math.random().toString(36).substr(2, 9),
       role: 'user' as const,
-      content: input,
+      content: currentInput,
       timestamp: new Date().toISOString()
     }
     addMessage(userMessage)
     setInput('')
     setIsLoading(true)
 
-    // Simulate LLM processing
-    setTimeout(() => {
-      const fileNames = selectedFiles.map(f => f.name.toLowerCase()).join(' ')
-      let responseText = ''
-      
-      // Select response based on file content
-      if (fileNames.includes('complaint')) {
-        responseText = mockResponses.complaint
-      } else if (fileNames.includes('discovery')) {
-        responseText = mockResponses.discovery
-      } else if (fileNames.includes('indictment')) {
-        responseText = mockResponses.indictment
-      } else {
-        responseText = mockResponses.default
-      }
-
+    try {
+      const answer = await sendChatMessage(
+        selectedCase.id,
+        selectedFileIds,
+        currentInput
+      )
       const assistantMessage = {
         id: Math.random().toString(36).substr(2, 9),
         role: 'assistant' as const,
-        content: responseText,
+        content: answer,
         timestamp: new Date().toISOString()
       }
       addMessage(assistantMessage)
+    } catch (err: any) {
+      console.error(err)
+      const assistantMessage = {
+        id: Math.random().toString(36).substr(2, 9),
+        role: 'assistant' as const,
+        content: `Error occurred: ${err.message || err}`,
+        timestamp: new Date().toISOString()
+      }
+      addMessage(assistantMessage)
+    } finally {
       setIsLoading(false)
-    }, 1500)
+    }
   }
 
   if (!selectedCase) {

@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Upload as UploadIcon, FileUp, Plus } from "lucide-react";
+import { Upload as UploadIcon, FileUp, Plus, Eye } from "lucide-react";
 import { Input } from "./ui/input";
 import { toast } from "sonner";
 
@@ -245,11 +245,10 @@ export function FileUpload() {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
-          className={`border-2 border-dashed rounded-lg p-6 sm:p-8 text-center cursor-pointer transition-colors ${
-            isDragging
+          className={`border-2 border-dashed rounded-lg p-6 sm:p-8 text-center cursor-pointer transition-colors ${isDragging
               ? "border-primary bg-primary/5"
               : "border-muted-foreground/30 hover:border-primary/50"
-          }`}
+            }`}
         >
           <input
             ref={fileInputRef}
@@ -303,7 +302,7 @@ export function FileUpload() {
         {files.length > 0 && (
           <div className="mt-2 text-center">
             <Button onClick={handleExtractText} className="w-full gap-2">
-              <Plus className="w-4 h-4" />
+              <Eye className="w-4 h-4" />
               See Text
             </Button>
           </div>
