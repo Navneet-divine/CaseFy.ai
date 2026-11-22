@@ -5,11 +5,13 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 
-const app = express();
-
 import userRoutes from './routes/user.routes.js';
 import caseRoutes from './routes/case.routes.js';
 import fileRoutes from './routes/file.routes.js';
+import chatRoutes from './routes/chat.routes.js';
+
+const app = express();
+
 
 const normalizeOrigin = (value: string) => value.replace(/\/+$/, '');
 
@@ -51,6 +53,7 @@ app.use(cookieParser());
 app.use('/api/users', userRoutes);
 app.use('/api/cases', caseRoutes);
 app.use('/api/files', fileRoutes);
+app.use('/api/chat', chatRoutes);
 
 const PORT = process.env.PORT || 5000;
 
