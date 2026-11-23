@@ -9,10 +9,11 @@ Welcome to the development log and architecture guide for the **AI Chatbot** in 
 | Status | Topic | Description |
 | :---: | :--- | :--- |
 | ✅ | **1. LLM Responses & Real-Time Streaming** | Base Prompt $\rightarrow$ Response, real-time SSE token streaming, ChatGPT-grade Markdown (tables, copyable code blocks), clean MVC controller & routes, custom Casefy AI identity. |
-| ⏳ | **2. Context Window & Exceeding Limits** | Understanding context length, token counting, detecting and handling max token exceed errors, and truncation strategies. |
-| ⏳ | **3. Conversation Memory** | Multi-turn chat history buffer, persistent database sessions, sliding-window retention, and automatic context summarization. |
-| ⏳ | **4. Real-Time Tools & Function Calling** | Live Web Search tool, PPT presentation generator, Image generation, and autonomous tool-calling execution loops. |
-| ⏳ | **5. Production Hardening** | Input guardrails, Zod schema validation, rate-limit retries, and fallback handling. |
+| ✅ | **2. Conversation Summary Buffer Memory** | Hybrid ChatGPT-style memory: active sliding window (6 recent messages) + automatic LLM compression of older dialogue into a running summary injected into system prompt. |
+| ⏳ | **3. Context Window Boundaries & Token Exceed Limits** | Token calculations for `openai/gpt-oss-120b`, overflow detection, automatic message truncation and compaction. |
+| ⏳ | **4. Database Session Persistence** | Persisting multi-session conversations and summaries in MongoDB via Prisma. |
+| ⏳ | **5. Real-Time Tools & Function Calling** | Live Web Search tool, PPT presentation generator, Image generation, and autonomous tool-calling execution loops. |
+| ⏳ | **6. Production Hardening** | Input guardrails, Zod schema validation, rate-limit retries, and fallback handling. |
 
 ---
 
@@ -50,35 +51,104 @@ export const CASEFY_SYSTEM_PROMPT = `You are Casefy AI, the official AI assistan
 
 ---
 
-## 🌊 Real-Time Streaming Architecture
+## 🧠 Multi-Turn Memory Architecture (Summary Buffer + User Facts)
 
-In [`backend/src/controllers/chat.controller.ts`](file:///Users/navneetkushwaha/Developers/CaseFy.ai/backend/src/controllers/chat.controller.ts), the handler streams tokens via Server-Sent Events:
+### Why Stateless LLMs Need Memory Management
+Large Language Models have **zero memory** across HTTP requests. In a naive implementation, you must re-send every past message on every turn. However, sending 20–50 full raw messages causes:
+1. **TPM (Tokens Per Minute) Exhaustion:** Rapidly hits Groq Free-Tier rate limits (`429 Too Many Requests`).
+2. **Latency Bloat:** Slower time-to-first-token as prompt payload multiplies.
+3. **Lossy Compression / "Lost in the Middle":** Without structured retention, naive text summarization drops vital user details like names or project goals.
+
+---
+
+### The Three-Tier Memory Model ([`backend/src/utils/memory.ts`](file:///Users/navneetkushwaha/Developers/CaseFy.ai/backend/src/utils/memory.ts))
+
+We implemented a production-grade **Hybrid Summary Buffer Memory** inspired by ChatGPT:
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│ 1. PERMANENT USER FACTS (Zero-Loss Store)                              │
+│    - Extracted personal entities: e.g. "User's Name: Navneet"          │
+│    - Immune to deletion, sliding windows, or summarization loss        │
+├────────────────────────────────────────────────────────────────────────┤
+│ 2. ROLLING CONVERSATION SUMMARY (Background Condensation)              │
+│    - Condensed 2-3 sentence overview of older dialogue topics          │
+│    - Structured: USER FACTS + TOPICS DISCUSSED                         │
+├────────────────────────────────────────────────────────────────────────┤
+│ 3. ACTIVE SLIDING WINDOW BUFFER (Last 6 Raw Messages)                  │
+│    - Recent conversation turns verbatim                                │
+│    - Keeps exact code blocks, syntax, and immediate conversational tone│
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+#### How It Works Step-by-Step:
+1. **Fact Extraction:** When the user shares personal details (e.g., *"My name is Navneet"*), `extractUserFacts()` locks this entity into `memory.userProfile.name`.
+2. **Buffer Ingestion:** Every new user and assistant message enters `memory.recentMessages`.
+3. **Sliding Window & Eviction:** When `recentMessages.length > 6` (`BUFFER_THRESHOLD`), the 2 oldest messages are evicted from the array.
+4. **Asynchronous Compression:** Before the evicted messages are discarded, Groq runs a lightweight background call (`updateSummaryWithEvictedMessages()`) to merge their core takeaways into `memory.summary`.
+5. **Prompt Augmentation:** `getAugmentedSystemPrompt()` packages the base system prompt, permanent facts, and running summary together into the system role before calling Groq.
 
 ```typescript
-// Streaming Mode
-if (stream) {
-  res.setHeader('Content-Type', 'text/event-stream');
+// Prompt Construction Sent to Groq:
+const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+  {
+    role: 'system',
+    content: getAugmentedSystemPrompt(CASEFY_SYSTEM_PROMPT),
+  },
+  ...memory.recentMessages,
+];
+```
 
-  const completionStream = await openai.chat.completions.create({
-    messages: [
-      { role: 'system', content: CASEFY_SYSTEM_PROMPT },
-      { role: 'user', content: prompt.trim() },
-    ],
-    model: 'openai/gpt-oss-120b',
-    temperature: 0.7,
-    max_tokens: 2048,
-    stream: true,
-  });
+---
 
-  for await (const chunk of completionStream) {
-    const delta = chunk.choices[0]?.delta?.content || '';
-    if (delta) {
-      res.write(`data: ${JSON.stringify({ content: delta })}\n\n`);
+## 🌊 Real-Time Streaming Controller ([`backend/src/controllers/chat.controller.ts`](file:///Users/navneetkushwaha/Developers/CaseFy.ai/backend/src/controllers/chat.controller.ts))
+
+The controller is clean, decoupled from memory logic, and streams SSE tokens in real time:
+
+```typescript
+export async function chatHandler(req: Request, res: Response) {
+  try {
+    const { prompt } = req.body;
+
+    // 1. Add user query to memory (auto-compresses if buffer exceeds 6)
+    await addMessageAndCompress('user', prompt.trim());
+
+    // 2. Build payload with Augmented System Prompt + Recent Buffer
+    const messages = [
+      { role: 'system', content: getAugmentedSystemPrompt(CASEFY_SYSTEM_PROMPT) },
+      ...memory.recentMessages,
+    ];
+
+    res.setHeader('Content-Type', 'text/event-stream');
+
+    const completionStream = await openai.chat.completions.create({
+      messages,
+      model: 'openai/gpt-oss-120b',
+      temperature: 0.7,
+      max_tokens: 2048,
+      stream: true,
+    });
+
+    let fullAssistantResponse = '';
+    for await (const chunk of completionStream) {
+      const delta = chunk.choices[0]?.delta?.content || '';
+      if (delta) {
+        fullAssistantResponse += delta;
+        res.write(`data: ${JSON.stringify({ content: delta })}\n\n`);
+      }
     }
-  }
 
-  res.write('data: [DONE]\n\n');
-  return res.end();
+    // 3. Save assistant response into memory
+    if (fullAssistantResponse) {
+      await addMessageAndCompress('assistant', fullAssistantResponse);
+    }
+
+    res.write('data: [DONE]\n\n');
+    return res.end();
+  } catch (error: any) {
+    console.error('Chat Controller Error:', error);
+    return res.status(500).json({ success: false, error: error?.message });
+  }
 }
 ```
 
