@@ -183,68 +183,46 @@ export const chatWithCase = async (req: Request, res: Response) => {
         const queryEmbedding = await getEmbedding(query);
 
         // -----------------------------
-        // Vector Search
+        // Vector Search (PostgreSQL)
         // -----------------------------
 
-        const result: any = await prisma.$runCommandRaw({
-            aggregate: "filechunk", // <-- change if your collection name differs
-
-            pipeline: [
-                {
-                    $vectorSearch: {
-                        index: "file_chunk_vector_index",
-
-                        path: "embedding",
-
-                        queryVector: queryEmbedding,
-
-                        limit: 5,
-
-                        numCandidates: 100,
-
-                        filter: {
-                            fileId: {
-                                $in: selectedFileIds,
-                            },
-                        },
+        const fileChunks = await prisma.fileChunk.findMany({
+            where: {
+                fileId: {
+                    in: selectedFileIds,
+                },
+            },
+            include: {
+                file: {
+                    select: {
+                        fileName: true,
                     },
                 },
-
-                {
-                    $lookup: {
-                        from: "file", // <-- change if needed
-
-                        localField: "fileId",
-
-                        foreignField: "_id",
-
-                        as: "file",
-                    },
-                },
-
-                {
-                    $unwind: "$file",
-                },
-
-                {
-                    $project: {
-                        _id: 0,
-
-                        text: 1,
-
-                        similarity: {
-                            $meta: "vectorSearchScore",
-                        },
-
-                        fileName: "$file.fileName",
-                    },
-                },
-            ],
-
-            cursor: {},
+            },
         });
 
-        const chunks = result.cursor.firstBatch;
+        function cosineSimilarity(vecA: number[], vecB: number[]): number {
+            if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
+            let dotProduct = 0;
+            let normA = 0;
+            let normB = 0;
+            for (let i = 0; i < vecA.length; i++) {
+                dotProduct += vecA[i] * vecB[i];
+                normA += vecA[i] * vecA[i];
+                normB += vecB[i] * vecB[i];
+            }
+            const denominator = Math.sqrt(normA) * Math.sqrt(normB);
+            return denominator === 0 ? 0 : dotProduct / denominator;
+        }
+
+        const chunks = fileChunks
+            .map((chunk) => ({
+                text: chunk.text,
+                similarity: cosineSimilarity(queryEmbedding, chunk.embedding),
+                fileName: chunk.file.fileName,
+            }))
+            .sort((a, b) => b.similarity - a.similarity)
+            .slice(0, 5);
 
         if (!chunks.length) {
             return res.status(200).json({

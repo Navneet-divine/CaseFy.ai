@@ -1,6 +1,7 @@
 "use client";
 
 import { useApp } from "@/context/AppContext";
+import { useAuth } from "@/context/AuthContext";
 import { LandingPage } from "@/components/LandingPage";
 import { LayoutWrapper } from "@/components/LayoutWrapper";
 import { CaseForm } from "@/components/CaseForm";
@@ -11,9 +12,18 @@ import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
 import { BarChart3, FileText, Briefcase } from "lucide-react";
 import AuthGuard from "@/components/AuthGuard";
+import { Spinner } from "@/components/ui/spinner";
 
 export default function Home() {
-  const { isAuthenticated } = useApp();
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="flex w-full h-screen items-center justify-center">
+        <Spinner className="text-primary size-8" />
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return <LandingPage />;

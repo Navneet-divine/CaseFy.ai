@@ -197,8 +197,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return normalized
       }
       return null
-    } catch (err) {
-      console.error('Failed to fetch cases', err)
+    } catch (err: any) {
+      if (err?.response?.status !== 401) {
+        console.error('Failed to fetch cases', err)
+      }
       return null
     }
   }
@@ -225,8 +227,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    // fetch cases on mount
-    fetchCases()
+    // Only fetch cases if an active session exists
+    const hasSession =
+      typeof window !== "undefined" &&
+      localStorage.getItem("casefy_session") === "true";
+    if (hasSession) {
+      fetchCases();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

@@ -107,6 +107,10 @@ export default function DashboardPage() {
         setAllCases(res.data.cases);
         setTotalCases(res.data.totalCases);
       } catch (error: any) {
+        if (error?.response?.status === 401) {
+          // Unauthenticated or session expired; AuthGuard handles redirect
+          return;
+        }
         setError(
           error?.response?.data?.error ||
             "Failed to fetch cases. Please try again.",

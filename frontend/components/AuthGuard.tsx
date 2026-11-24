@@ -18,27 +18,28 @@ interface AuthGuardProps {
 export default function AuthGuard({
   children,
   protectedRoute = false,
-  redirectTo = "/",
+  redirectTo,
 }: AuthGuardProps) {
   const { loading, isAuthenticated } = useAuth();
-
   const router = useRouter();
+
+  const targetRedirect = redirectTo || (protectedRoute ? "/login" : "/dashboard");
 
   useEffect(() => {
     if (loading) return;
 
-    // Protected route -> unauthenticated users go to redirectTo
+    // Protected route -> unauthenticated users go to login
     if (protectedRoute && !isAuthenticated) {
-      router.replace(redirectTo);
+      router.replace(targetRedirect);
       return;
     }
 
     // Public route -> authenticated users go to dashboard
     if (!protectedRoute && isAuthenticated) {
-      router.replace("/dashboard");
+      router.replace(targetRedirect);
       return;
     }
-  }, [loading, isAuthenticated, protectedRoute, redirectTo, router]);
+  }, [loading, isAuthenticated, protectedRoute, targetRedirect, router]);
 
   if (loading) {
     return (
@@ -57,5 +58,5 @@ export default function AuthGuard({
     return null;
   }
 
-  return children;
+  return <>{children}</>;
 }

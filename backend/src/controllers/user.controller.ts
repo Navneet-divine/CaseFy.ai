@@ -5,6 +5,9 @@ import { signToken, verifyToken } from "../utils/jwt.js";
 import { Resend } from 'resend';
 import forgotPasswordTemplate from "../templates/forgotPasswordTemplate.js";
 import crypto from 'crypto';
+import { OAuth2Client } from 'google-auth-library';
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const resetToken = crypto.randomBytes(32).toString('hex');
 
@@ -76,7 +79,11 @@ export const login = async (req: Request, res: Response) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    const isValidUser = await comparePassword(password, user?.password || "");
+    if (!user.password) {
+      return res.status(400).json({ error: "This account was registered using Google. Please sign in with Google." });
+    }
+
+    const isValidUser = await comparePassword(password, user.password);
 
     if (!isValidUser) {
       return res.status(401).json({ error: "Invalid credentials" });
@@ -215,36 +222,110 @@ export const resetPassword = async (
   }
 };
 
-export const current = async (req: Request, res: Response) => {
+import { AuthRequest } from "../middleware/auth.middleware.js";
+
+export const current = async (req: AuthRequest, res: Response) => {
   try {
-    const token = req.cookies?.token;
+    const userId = req.user?.userId;
 
-    if (!token) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-
-    const payload = verifyToken(token);
-
-    if (!payload || !payload.userId) {
-      return res.status(401).json({ error: "Invalid token" });
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
     }
 
     const user = await prisma.user.findUnique({
-      where: { id: payload.userId },
+      where: { id: userId },
       select: {
         id: true,
         email: true,
         fullName: true,
+        avatar: true,
         createdAt: true,
         updatedAt: true,
       },
     });
 
-    if (!user) return res.status(404).json({ error: "User not found" });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
 
     res.status(200).json({ user });
   } catch (error) {
     res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+/**
+ * Google OAuth Controller
+ * Verifies the Google ID token and logs in or registers the user.
+ */
+export const googleAuth = async (req: Request, res: Response) => {
+  try {
+    const { credential } = req.body;
+
+    if (!credential) {
+      return res.status(400).json({ error: "Google credential token is required" });
+    }
+
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    if (!payload || !payload.email) {
+      return res.status(400).json({ error: "Invalid Google token payload" });
+    }
+
+    const { email, name, sub: googleId, picture: avatar } = payload;
+
+    // Check if user already exists by googleId or email
+    let user = await prisma.user.findFirst({
+      where: {
+        OR: [{ googleId }, { email }],
+      },
+    });
+
+    if (user) {
+      // If user signed up via email earlier, link their Google account
+      if (!user.googleId) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            googleId,
+            avatar: avatar || user.avatar,
+          },
+        });
+      }
+    } else {
+      // Create new user for first-time Google sign-in
+      user = await prisma.user.create({
+        data: {
+          fullName: name || "Google User",
+          email,
+          googleId,
+          avatar,
+        },
+      });
+    }
+
+    const token = signToken(user);
+
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    return res.status(200).json({
+      message: "Google login successful",
+      user,
+    });
+  } catch (error: any) {
+    console.error("Google Auth Error:", error);
+    return res.status(500).json({
+      error: error?.message || "Google authentication failed",
+    });
   }
 };
 

@@ -45,7 +45,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001/api";
 
 const NAV_ITEMS = [
   {
@@ -103,13 +103,13 @@ export function AppSidebar(props: React.ComponentProps<typeof ShadcnSidebar>) {
         {},
         { withCredentials: true }
       );
-      authLogout();
-      logout();
-      window.location.href = "/";
     } catch (err) {
       console.error("Logout failed", err);
     } finally {
+      authLogout();
+      logout();
       setIsLoggingOut(false);
+      window.location.replace("/");
     }
   };
 
@@ -181,9 +181,18 @@ export function AppSidebar(props: React.ComponentProps<typeof ShadcnSidebar>) {
                   tooltip={displayName}
                   className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground hover:bg-sidebar-accent/70 transition-colors"
                 >
-                  <div className="flex aspect-square size-8 items-center justify-center rounded-full bg-gradient-to-tr from-emerald-400 to-lime-300 text-zinc-950 font-bold shadow-xs">
-                    {displayName.charAt(0).toUpperCase()}
-                  </div>
+                  {user?.avatar ? (
+                    <img
+                      src={user.avatar}
+                      alt={displayName}
+                      className="aspect-square size-8 rounded-full object-cover shadow-xs border border-border"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="flex aspect-square size-8 items-center justify-center rounded-full bg-gradient-to-tr from-emerald-400 to-lime-300 text-zinc-950 font-bold shadow-xs">
+                      {displayName.charAt(0).toUpperCase()}
+                    </div>
+                  )}
                   <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
                     <span className="truncate font-semibold text-sidebar-foreground">
                       {displayName}
