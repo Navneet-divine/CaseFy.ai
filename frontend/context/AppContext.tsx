@@ -37,11 +37,29 @@ export interface User {
   createdAt: string
 }
 
+export interface ConversationItem {
+  id: string
+  title: string
+  createdAt: string
+  updatedAt: string
+  _count?: {
+    messages: number
+  }
+}
+
 interface AppContextType {
   // Auth state
   user: User | null
   isAuthenticated: boolean
   isLoading: boolean
+
+  // Conversations
+  conversations: ConversationItem[]
+  isLoadingConversations: boolean
+  fetchConversations: (force?: boolean) => Promise<void>
+  setConversations: React.Dispatch<React.SetStateAction<ConversationItem[]>>
+  isHistoryOpen: boolean
+  setIsHistoryOpen: React.Dispatch<React.SetStateAction<boolean>>
 
   // Case data
   cases: Case[]
@@ -128,6 +146,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null)
   const [selectedFileIds, setSelectedFileIds] = useState<string[]>([])
   const [chatHistory, setChatHistory] = useState<Message[]>([])
+  const [conversations, setConversations] = useState<ConversationItem[]>([])
+  const [isLoadingConversations, setIsLoadingConversations] = useState(false)
+  const [isHistoryOpen, setIsHistoryOpenState] = useState<boolean>(true)
+  const conversationsFetchedRef = React.useRef(false)
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('casefy_sidebar_history_open')
+      if (stored !== null) {
+        setIsHistoryOpenState(stored === 'true')
+      }
+    }
+  }, [])
+
+  const setIsHistoryOpen: React.Dispatch<React.SetStateAction<boolean>> = React.useCallback(
+    (action) => {
+      setIsHistoryOpenState((prev) => {
+        const next = typeof action === 'function' ? action(prev) : action
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('casefy_sidebar_history_open', String(next))
+        }
+        return next
+      })
+    },
+    []
+  )
 
   const signup = async (email: string, password: string, name: string) => {
     setIsLoading(true)
@@ -226,13 +270,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const fetchConversations = React.useCallback(
+    async (force: boolean = false) => {
+      if (conversationsFetchedRef.current && !force) return
+      const hasSession =
+        typeof window !== 'undefined' &&
+        localStorage.getItem('casefy_session') === 'true'
+      if (!hasSession) {
+        setConversations([])
+        return
+      }
+      try {
+        setIsLoadingConversations(true)
+        const res = await axios.get(`${API_BASE_URL}/chat/conversations`, {
+          withCredentials: true,
+        })
+        setConversations(res.data.conversations || [])
+        conversationsFetchedRef.current = true
+      } catch (err: any) {
+        if (err?.response?.status !== 401) {
+          console.error('Failed to fetch conversations', err)
+        }
+      } finally {
+        setIsLoadingConversations(false)
+      }
+    },
+    [API_BASE_URL]
+  )
+
   useEffect(() => {
-    // Only fetch cases if an active session exists
+    // Only fetch cases & conversations if an active session exists
     const hasSession =
       typeof window !== "undefined" &&
       localStorage.getItem("casefy_session") === "true";
     if (hasSession) {
       fetchCases();
+      fetchConversations();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -268,6 +341,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSelectedCaseId(null)
     setSelectedFileIds([])
     setChatHistory([])
+    setConversations([])
+    conversationsFetchedRef.current = false
   }
 
   const addCase = (caseData: Omit<Case, 'id' | 'files'>) => {
@@ -356,6 +431,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         user,
         isAuthenticated: !!user,
         isLoading,
+        conversations,
+        isLoadingConversations,
+        fetchConversations,
+        setConversations,
+        isHistoryOpen,
+        setIsHistoryOpen,
         cases,
         selectedCaseId,
         selectedFileIds,

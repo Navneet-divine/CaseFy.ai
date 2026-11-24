@@ -18,6 +18,7 @@ import {
   HelpCircle,
   MoreVertical,
   ChevronRight,
+  ChevronDown,
 } from "lucide-react";
 
 import { useApp } from "@/context/AppContext";
@@ -31,6 +32,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   Sidebar as ShadcnSidebar,
   SidebarContent,
   SidebarFooter,
@@ -41,6 +47,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
@@ -58,7 +67,7 @@ const NAV_ITEMS = [
     name: "AI Chatbot",
     href: "/chatbot",
     icon: Bot,
-    matchSubpaths: true,
+    matchSubpaths: false,
   },
   {
     name: "Upload Case",
@@ -78,20 +87,29 @@ const NAV_ITEMS = [
     icon: MessageSquare,
     matchSubpaths: false,
   },
-  {
-    name: "History",
-    href: "/chat/history",
-    icon: Clock,
-    matchSubpaths: false,
-  },
 ];
 
 export function AppSidebar(props: React.ComponentProps<typeof ShadcnSidebar>) {
   const pathname = usePathname();
-  const { logout } = useApp();
+  const { logout, conversations, fetchConversations, isHistoryOpen, setIsHistoryOpen } = useApp();
   const { user, logout: authLogout } = useAuth();
   const { isMobile } = useSidebar();
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
+  const [currentChatId, setCurrentChatId] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    fetchConversations();
+    const handleChatUpdated = () => fetchConversations(true);
+    window.addEventListener("chat-updated", handleChatUpdated);
+    return () => window.removeEventListener("chat-updated", handleChatUpdated);
+  }, [fetchConversations]);
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      setCurrentChatId(params.get("id"));
+    }
+  }, [pathname]);
 
   const displayName = user?.fullName || "Navneet Kushwaha";
 
@@ -109,7 +127,7 @@ export function AppSidebar(props: React.ComponentProps<typeof ShadcnSidebar>) {
       authLogout();
       logout();
       setIsLoggingOut(false);
-      window.location.replace("/");
+      window.location.replace("/login");
     }
   };
 
@@ -165,6 +183,68 @@ export function AppSidebar(props: React.ComponentProps<typeof ShadcnSidebar>) {
                   </SidebarMenuItem>
                 );
               })}
+
+              {/* Collapsible History Section matching reference */}
+              <Collapsible
+                open={isHistoryOpen}
+                onOpenChange={setIsHistoryOpen}
+                className="group/collapsible"
+              >
+                <SidebarMenuItem>
+                  <CollapsibleTrigger asChild>
+                    <SidebarMenuButton
+                      tooltip="History"
+                      className="w-full justify-between group-data-[collapsible=icon]:justify-center hover:bg-sidebar-accent/60 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Clock className="size-4 text-muted-foreground" />
+                        <span className="font-medium text-sm group-data-[collapsible=icon]:hidden">
+                          History
+                        </span>
+                      </div>
+                      <ChevronDown className="size-3.5 text-muted-foreground transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180 group-data-[collapsible=icon]:hidden" />
+                    </SidebarMenuButton>
+                  </CollapsibleTrigger>
+
+                  <CollapsibleContent>
+                    <SidebarMenuSub className="border-sidebar-border/60">
+                      {conversations.length === 0 ? (
+                        <SidebarMenuSubItem>
+                          <span className="text-xs text-muted-foreground/60 px-2 py-1.5 block">
+                            No previous chats
+                          </span>
+                        </SidebarMenuSubItem>
+                      ) : (
+                        conversations.map((conv) => {
+                          const isConvActive =
+                            pathname === `/chatbot/${conv.id}` ||
+                            (pathname === "/chatbot" && currentChatId === conv.id);
+
+                          return (
+                            <SidebarMenuSubItem key={conv.id}>
+                              <SidebarMenuSubButton
+                                asChild
+                                isActive={isConvActive}
+                                className="text-xs font-normal hover:text-foreground transition-colors"
+                              >
+                                <Link
+                                  href={`/chatbot/${conv.id}`}
+                                  title={conv.title}
+                                  className="truncate"
+                                >
+                                  <span className="truncate">
+                                    {conv.title || "Untitled Chat"}
+                                  </span>
+                                </Link>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          );
+                        })
+                      )}
+                    </SidebarMenuSub>
+                  </CollapsibleContent>
+                </SidebarMenuItem>
+              </Collapsible>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
